@@ -25,6 +25,25 @@ var ErrExistingResource = errors.New("This resource has already been created ear
 // ErrInvalidCredentials is raised when not all the credentials are presented.
 var ErrInvalidCredentials = errors.New("Credentials are not set. Specify Token or Pair of Secret and UUID")
 
+// APIError represents an error response from the Wallarm API.
+// Use errors.As to check for specific status codes:
+//
+//	var apiErr *wallarm.APIError
+//	if errors.As(err, &apiErr) && apiErr.StatusCode == 404 { ... }
+type APIError struct {
+	StatusCode int
+	Body       string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("HTTP Status: %d, Body: %s", e.StatusCode, e.Body)
+}
+
+// NewAPIError creates an APIError with the given status code and body.
+func NewAPIError(statusCode int, body string) *APIError {
+	return &APIError{StatusCode: statusCode, Body: body}
+}
+
 // New creates a new Wallarm API client.
 func New(opts ...Option) (API, error) {
 
@@ -170,23 +189,12 @@ func (api *api) makeRequestContext(ctx context.Context, method, uri, reqType str
 	api.logger.Printf("HTTP Status: %d, Body: %s", resp.StatusCode, respBody)
 	switch {
 	case resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices:
-	case resp.StatusCode == http.StatusUnauthorized:
-		return nil, errors.Errorf("HTTP Status: %d, Body: %s", resp.StatusCode, respBody)
-	case resp.StatusCode == http.StatusForbidden:
-		return nil, errors.Errorf("HTTP Status: %d, Body: %s", resp.StatusCode, respBody)
-	case resp.StatusCode == http.StatusServiceUnavailable,
-		resp.StatusCode == http.StatusBadGateway,
-		resp.StatusCode == http.StatusGatewayTimeout,
-		resp.StatusCode == 522,
-		resp.StatusCode == 523,
-		resp.StatusCode == 524:
-		return nil, errors.Errorf("HTTP Status: %d, Body: %s", resp.StatusCode, respBody)
 	case resp.StatusCode == http.StatusBadRequest && (reqType == "node" || reqType == "app" || reqType == "client") && string(respBody) == `{"status":400,"body":"Already exists"}`:
-		return nil, errors.Wrap(ErrExistingResource, fmt.Sprintf("HTTP Status: %[1]v Body: %[2]s", resp.StatusCode, string(respBody)))
+		return nil, errors.Wrap(ErrExistingResource, NewAPIError(resp.StatusCode, string(respBody)).Error())
 	case resp.StatusCode == http.StatusConflict && Contains(specificResourceProcessing, reqType):
-		return nil, errors.Wrap(ErrExistingResource, fmt.Sprintf("HTTP Status: %[1]v Body: %[2]s", resp.StatusCode, string(respBody)))
+		return nil, errors.Wrap(ErrExistingResource, NewAPIError(resp.StatusCode, string(respBody)).Error())
 	default:
-		return nil, errors.Errorf("HTTP Status: %d, Body: %s", resp.StatusCode, respBody)
+		return nil, NewAPIError(resp.StatusCode, string(respBody))
 	}
 
 	return respBody, nil

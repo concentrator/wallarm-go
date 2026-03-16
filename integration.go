@@ -3,6 +3,7 @@ package wallarm
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 )
@@ -210,7 +211,8 @@ func (api *api) IntegrationRead(clientID int, id int) (*IntegrationObject, error
 		return nil, err
 	}
 	if i.Body.Object == nil {
-		return nil, fmt.Errorf("Not found. Integration %d: no integrations returned for client %d", id, clientID)
+		return nil, NewAPIError(http.StatusNotFound,
+			fmt.Sprintf("Integration %d: no integrations returned for client %d", id, clientID))
 	}
 	for _, obj := range *i.Body.Object {
 		if obj.ID == id {
@@ -218,7 +220,8 @@ func (api *api) IntegrationRead(clientID int, id int) (*IntegrationObject, error
 		}
 	}
 
-	return nil, fmt.Errorf("Not found. Integration %d not found for client %d. Body: %s", id, clientID, string(respBody))
+	return nil, NewAPIError(http.StatusNotFound,
+		fmt.Sprintf("Integration %d not found for client %d. Body: %s", id, clientID, string(respBody)))
 }
 
 // IntegrationDelete is used to delete an existing integration.
