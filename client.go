@@ -12,13 +12,25 @@ type (
 		ClientCreate(clientBody *ClientCreate) (*SingleClientInfo, error)
 		ClientUpdate(clientBody *ClientUpdate) (*ClientInfo, error)
 		ClientRead(clientBody *ClientRead) (*ClientInfo, error)
+		ClientDelete(clientBody *ClientDelete) (*ClientDeleteResponse, error)
 	}
 
 	// ClientFields defines fields which are subject to update.
 	ClientFields struct {
 		Name                string `json:"name,omitempty"`
-		Enabled             bool   `json:"enabled,omitempty"`
+		Enabled             *bool  `json:"enabled,omitempty"`
 		AttackRecheckerMode string `json:"attack_rechecker_mode,omitempty"`
+	}
+
+	// ClientDelete is the request body for deleting a client.
+	ClientDelete struct {
+		Filter *ClientFilter `json:"filter"`
+	}
+
+	// ClientDeleteResponse is the response from the delete endpoint.
+	ClientDeleteResponse struct {
+		Status int   `json:"status"`
+		Body   []int `json:"body"`
 	}
 
 	// ClientFilter is used for filtration.
@@ -179,6 +191,21 @@ func (api *api) ClientRead(clientBody *ClientRead) (*ClientInfo, error) {
 		return nil, err
 	}
 	var c ClientInfo
+	if err = json.Unmarshal(respBody, &c); err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// ClientDelete deletes a client by ID.
+// API reference: https://apiconsole.eu1.wallarm.com
+func (api *api) ClientDelete(clientBody *ClientDelete) (*ClientDeleteResponse, error) {
+	uri := "/v1/objects/client/delete"
+	respBody, err := api.makeRequest("POST", uri, "client", clientBody, nil)
+	if err != nil {
+		return nil, err
+	}
+	var c ClientDeleteResponse
 	if err = json.Unmarshal(respBody, &c); err != nil {
 		return nil, err
 	}
