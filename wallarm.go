@@ -132,7 +132,7 @@ func (api *api) makeRequestContext(ctx context.Context, method, uri, reqType str
 			case lastStatusCode == http.StatusLocked: // 423
 				sleepDuration = 5 * time.Second
 			case lastStatusCode >= 500:
-				sleepDuration = 30 * time.Second
+				sleepDuration = 10 * time.Second
 			default:
 				sleepDuration = time.Duration(math.Pow(2, float64(i-1)) * float64(api.retryPolicy.MinRetryDelay))
 				if sleepDuration > api.retryPolicy.MaxRetryDelay {
