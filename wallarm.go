@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"math"
 	"net/http"
 	"strings"
@@ -60,7 +61,7 @@ func newClient(opts ...Option) (API, error) {
 		baseURL: apiURL,
 		headers: make(http.Header),
 		retryPolicy: RetryPolicy{
-			MaxRetries:    3,
+			MaxRetries:    12,
 			MinRetryDelay: time.Duration(1) * time.Second,
 			MaxRetryDelay: time.Duration(30) * time.Second,
 		},
@@ -117,22 +118,30 @@ func (api *api) makeRequestContext(ctx context.Context, method, uri, reqType str
 		jsonBody = nil
 	}
 
+	var lastStatusCode int
+
 	for i := 0; i <= api.retryPolicy.MaxRetries; i++ {
 		if jsonBody != nil {
 			reqBody = bytes.NewReader(jsonBody)
 		}
 
 		if i > 0 {
-			// expect the backoff introduced here on errored requests to dominate the effect of rate limiting
-			// don't need a random component here as the rate limiter should do something similar
-			// nb time duration could truncate an arbitrary float. Since our inputs are all ints, we should be ok
-			sleepDuration := time.Duration(math.Pow(2, float64(i-1)) * float64(api.retryPolicy.MinRetryDelay))
-
-			if sleepDuration > api.retryPolicy.MaxRetryDelay {
-				sleepDuration = api.retryPolicy.MaxRetryDelay
+			// Use status-specific retry delays.
+			var sleepDuration time.Duration
+			switch {
+			case lastStatusCode == http.StatusLocked: // 423
+				sleepDuration = 5 * time.Second
+			case lastStatusCode >= 500:
+				sleepDuration = 30 * time.Second
+			default:
+				sleepDuration = time.Duration(math.Pow(2, float64(i-1)) * float64(api.retryPolicy.MinRetryDelay))
+				if sleepDuration > api.retryPolicy.MaxRetryDelay {
+					sleepDuration = api.retryPolicy.MaxRetryDelay
+				}
 			}
-				time.Sleep(sleepDuration)
-
+			log.Printf("[DEBUG] Retrying request (attempt %d/%d) after %s due to HTTP %d",
+				i+1, api.retryPolicy.MaxRetries+1, sleepDuration, lastStatusCode)
+			time.Sleep(sleepDuration)
 		}
 
 		if query, ok := params.(string); ok {
@@ -144,26 +153,31 @@ func (api *api) makeRequestContext(ctx context.Context, method, uri, reqType str
 			respErr = errors.Wrap(err, "could not make a request with JSON body")
 		}
 
-		// retry if the server is rate limiting us or if it failed
-		// assumes server operations are rolled back on failure
-		if respErr != nil || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
-			if respErr == nil {
-				respBody, err = ioutil.ReadAll(resp.Body)
-				resp.Body.Close()
+		if respErr != nil {
+			lastStatusCode = 0
+			continue
+		}
 
+		lastStatusCode = resp.StatusCode
+
+		// Retry on: 423 (locked/rules being updated), 429 (rate limit), 5xx (server error).
+		if resp.StatusCode == http.StatusLocked ||
+			resp.StatusCode == http.StatusTooManyRequests ||
+			resp.StatusCode >= 500 {
+			respBody, err = ioutil.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
 				respErr = errors.Wrap(err, "could not read response body")
-
-				} else {
 			}
 			continue
-		} else {
-			respBody, err = ioutil.ReadAll(resp.Body)
-			defer resp.Body.Close()
-			if err != nil {
-				return nil, errors.Wrap(err, "could not read response body")
-			}
-			break
 		}
+
+		respBody, err = ioutil.ReadAll(resp.Body)
+		defer resp.Body.Close()
+		if err != nil {
+			return nil, errors.Wrap(err, "could not read response body")
+		}
+		break
 	}
 
 	if respErr != nil {
