@@ -25,12 +25,6 @@ type RetryPolicy struct {
 	MaxRetryDelay time.Duration
 }
 
-// Logger defines the interface this library needs to use logging
-// This is a subset of the methods implemented in the log package
-type Logger interface {
-	Printf(format string, v ...interface{})
-}
-
 type (
 	// API holds the configuration for the current API client. A client should not
 	// be modified concurrently.
@@ -61,7 +55,6 @@ type (
 		headers            http.Header
 		httpClient         *http.Client
 		retryPolicy        RetryPolicy
-		logger             Logger
 		*sync.Mutex
 	}
 )
@@ -101,15 +94,6 @@ func UsingRetryPolicy(maxRetries int, minRetryDelaySecs int, maxRetryDelaySecs i
 			MinRetryDelay: time.Duration(minRetryDelaySecs) * time.Second,
 			MaxRetryDelay: time.Duration(maxRetryDelaySecs) * time.Second,
 		}
-		return nil
-	}
-}
-
-// UsingLogger can be set if you want to get log output from this API instance
-// By default no log output is emitted
-func UsingLogger(logger Logger) Option {
-	return func(api *api) error {
-		api.logger = logger
 		return nil
 	}
 }
