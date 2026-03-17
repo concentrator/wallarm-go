@@ -126,7 +126,7 @@ func (api *api) makeRequestContext(ctx context.Context, method, uri, reqType str
 		}
 
 		if i > 0 {
-			// Use status-specific retry delays.
+			// Use status-specific retry delays, capped by MaxRetryDelay.
 			var sleepDuration time.Duration
 			switch {
 			case lastStatusCode == http.StatusLocked: // 423
@@ -135,9 +135,9 @@ func (api *api) makeRequestContext(ctx context.Context, method, uri, reqType str
 				sleepDuration = 10 * time.Second
 			default:
 				sleepDuration = time.Duration(math.Pow(2, float64(i-1)) * float64(api.retryPolicy.MinRetryDelay))
-				if sleepDuration > api.retryPolicy.MaxRetryDelay {
-					sleepDuration = api.retryPolicy.MaxRetryDelay
-				}
+			}
+			if sleepDuration > api.retryPolicy.MaxRetryDelay {
+				sleepDuration = api.retryPolicy.MaxRetryDelay
 			}
 			log.Printf("[DEBUG] Retrying request (attempt %d/%d) after %s due to HTTP %d",
 				i+1, api.retryPolicy.MaxRetries+1, sleepDuration, lastStatusCode)
