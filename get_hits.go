@@ -29,6 +29,8 @@ type (
 		ClientID          int             `json:"clientid"`
 		RequestID         string          `json:"request_id,omitempty"`
 		ID                []string        `json:"id,omitempty"`
+		AttackID          []string        `json:"attackid,omitempty"`
+		Type              []string        `json:"type,omitempty"`
 		State             *string         `json:"state"`
 		NotType           []string        `json:"!type,omitempty"`
 		Time              [][]interface{} `json:"time,omitempty"`
@@ -36,6 +38,7 @@ type (
 		SecurityIssueID   *int            `json:"security_issue_id"`
 		NotExperimental   bool            `json:"!experimental"`
 		NotAasmEvent      bool            `json:"!aasm_event"`
+		NotWallarmScanner bool            `json:"!wallarm_scanner,omitempty"`
 	}
 
 	// Hit represents a single detection event within a request.
