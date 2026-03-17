@@ -8,10 +8,8 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"math"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -56,12 +54,6 @@ func New(opts ...Option) (API, error) {
 }
 
 func newClient(opts ...Option) (API, error) {
-	logger := log.New(ioutil.Discard, "", log.LstdFlags)
-	_, useTfOutput := os.LookupEnv("TF_LOG_PROVIDER")
-	if useTfOutput {
-		logger = log.New(os.Stdout, "", log.LstdFlags)
-	}
-
 	defaultUserAgent := "Wallarm-go/" + Version
 
 	api := &api{
@@ -72,8 +64,7 @@ func newClient(opts ...Option) (API, error) {
 			MinRetryDelay: time.Duration(1) * time.Second,
 			MaxRetryDelay: time.Duration(30) * time.Second,
 		},
-		logger: logger,
-		Mutex:  &sync.Mutex{},
+		Mutex: &sync.Mutex{},
 	}
 
 	if err := api.parseOptions(opts...); err != nil {
@@ -140,13 +131,10 @@ func (api *api) makeRequestContext(ctx context.Context, method, uri, reqType str
 			if sleepDuration > api.retryPolicy.MaxRetryDelay {
 				sleepDuration = api.retryPolicy.MaxRetryDelay
 			}
-			// useful to do some simple logging here, maybe introduce levels later
-			api.logger.Printf("Sleeping %s before retry attempt number %d for request %s %s", sleepDuration.String(), i, method, uri)
-			time.Sleep(sleepDuration)
+				time.Sleep(sleepDuration)
 
 		}
 
-		api.logger.Printf("REQUEST: Method: %s, Uri: %s, Body: %s", method, uri, string(jsonBody))
 		if query, ok := params.(string); ok {
 			q := strings.NewReader(query)
 			resp, err = api.request(ctx, method, uri, reqType, reqBody, q, headers)
@@ -165,10 +153,7 @@ func (api *api) makeRequestContext(ctx context.Context, method, uri, reqType str
 
 				respErr = errors.Wrap(err, "could not read response body")
 
-				api.logger.Printf("Request: %s %s got an error response %d: %s\n", method, uri, resp.StatusCode,
-					strings.Replace(strings.Replace(string(respBody), "\n", "", -1), "\t", "", -1))
-			} else {
-				api.logger.Printf("Error performing request: %s %s : %s \n", method, uri, respErr.Error())
+				} else {
 			}
 			continue
 		} else {
@@ -186,7 +171,6 @@ func (api *api) makeRequestContext(ctx context.Context, method, uri, reqType str
 	}
 
 	specificResourceProcessing := []string{"user"}
-	api.logger.Printf("HTTP Status: %d, Body: %s", resp.StatusCode, respBody)
 	switch {
 	case resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices:
 	case resp.StatusCode == http.StatusBadRequest && (reqType == "node" || reqType == "app" || reqType == "client") && string(respBody) == `{"status":400,"body":"Already exists"}`:
@@ -244,3 +228,4 @@ func (api *api) request(ctx context.Context, method, uri, reqType string, reqBod
 
 	return resp, nil
 }
+
