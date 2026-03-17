@@ -28,7 +28,8 @@ func setup(opts ...Option) {
 	// Wallarm client configured to use test server
 	authHeaders := make(http.Header)
 	authHeaders.Add("X-WallarmAPI-Token", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-	client, _ = New(UsingBaseURL(server.URL), Headers(authHeaders))
+	baseOpts := []Option{UsingBaseURL(server.URL), Headers(authHeaders)}
+	client, _ = New(append(baseOpts, opts...)...)
 }
 
 func teardown() {
