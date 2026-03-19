@@ -8,7 +8,7 @@ type Allowlist interface {
 
 // AllowlistRead requests the current allowlist.
 func (api *api) AllowlistRead(clientID int) ([]IPRule, error) {
-	return api.IPListRead(AllowlistType, clientID)
+	return api.IPListRead(AllowlistType, clientID, 1000)
 }
 
 // AllowlistCreate creates an allowlist entry in the Wallarm Cloud.

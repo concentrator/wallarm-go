@@ -8,7 +8,7 @@ type Denylist interface {
 
 // DenylistRead requests the current denylist.
 func (api *api) DenylistRead(clientID int) ([]IPRule, error) {
-	return api.IPListRead(DenylistType, clientID)
+	return api.IPListRead(DenylistType, clientID, 1000)
 }
 
 // DenylistCreate creates a denylist entry in the Wallarm Cloud.
