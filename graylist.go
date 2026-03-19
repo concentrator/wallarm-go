@@ -8,7 +8,7 @@ type Graylist interface {
 
 // GraylistRead requests the current graylist.
 func (api *api) GraylistRead(clientID int) ([]IPRule, error) {
-	return api.IPListRead(GraylistType, clientID)
+	return api.IPListRead(GraylistType, clientID, 1000)
 }
 
 // GraylistCreate creates a graylist entry in the Wallarm Cloud.

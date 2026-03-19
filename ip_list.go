@@ -11,8 +11,8 @@ type (
 	IPListType string
 
 	IPList interface {
-		IPListRead(listType IPListType, clientID int) ([]IPRule, error)
-		IPListReadByRuleType(listType IPListType, clientID int, ruleTypes []string) ([]IPRule, error)
+		IPListRead(listType IPListType, clientID, limit int) ([]IPRule, error)
+		IPListReadByRuleType(listType IPListType, clientID int, ruleTypes []string, limit int) ([]IPRule, error)
 		IPListSearch(listType IPListType, clientID int, ruleType string, query string) ([]IPRule, error)
 		IPListCreate(clientID int, params AccessRuleCreateRequest) error
 		IPListDelete(clientID int, rules []AccessRuleDeleteEntry) error
@@ -57,14 +57,12 @@ type (
 )
 
 const (
-	ipListPageSize = 500
-
 	DenylistType  IPListType = "block"
 	AllowlistType IPListType = "allow"
 	GraylistType  IPListType = "gray"
 )
 
-func (api *api) IPListRead(listType IPListType, clientID int) ([]IPRule, error) {
+func (api *api) IPListRead(listType IPListType, clientID, limit int) ([]IPRule, error) {
 	uri := fmt.Sprintf("/v1/blocklist/clients/%d/groups", clientID)
 
 	q := url.Values{}
@@ -73,7 +71,7 @@ func (api *api) IPListRead(listType IPListType, clientID int) ([]IPRule, error) 
 	q.Add("filter[rule_type][]", "datacenter")
 	q.Add("filter[rule_type][]", "location")
 	q.Set("filter[list]", string(listType))
-	q.Set("limit", strconv.Itoa(ipListPageSize))
+	q.Set("limit", strconv.Itoa(limit))
 
 	var response struct {
 		Body struct {
@@ -92,23 +90,26 @@ func (api *api) IPListRead(listType IPListType, clientID int) ([]IPRule, error) 
 			return nil, err
 		}
 
+		// Reset before unmarshal to prevent slice backing array reuse
+		// across pages (json.Unmarshal overwrites the existing slice).
+		response.Body.Objects = nil
 		if err = json.Unmarshal(respBody, &response); err != nil {
 			return nil, err
 		}
 
 		result = append(result, response.Body.Objects...)
 
-		if len(response.Body.Objects) < ipListPageSize {
+		if len(response.Body.Objects) < limit {
 			break
 		}
 
-		offset += ipListPageSize
+		offset += limit
 	}
 
 	return result, nil
 }
 
-func (api *api) IPListReadByRuleType(listType IPListType, clientID int, ruleTypes []string) ([]IPRule, error) {
+func (api *api) IPListReadByRuleType(listType IPListType, clientID int, ruleTypes []string, limit int) ([]IPRule, error) {
 	uri := fmt.Sprintf("/v1/blocklist/clients/%d/groups", clientID)
 
 	q := url.Values{}
@@ -116,7 +117,7 @@ func (api *api) IPListReadByRuleType(listType IPListType, clientID int, ruleType
 		q.Add("filter[rule_type][]", rt)
 	}
 	q.Set("filter[list]", string(listType))
-	q.Set("limit", strconv.Itoa(ipListPageSize))
+	q.Set("limit", strconv.Itoa(limit))
 
 	var response struct {
 		Body struct {
@@ -135,17 +136,18 @@ func (api *api) IPListReadByRuleType(listType IPListType, clientID int, ruleType
 			return nil, err
 		}
 
+		response.Body.Objects = nil
 		if err = json.Unmarshal(respBody, &response); err != nil {
 			return nil, err
 		}
 
 		result = append(result, response.Body.Objects...)
 
-		if len(response.Body.Objects) < ipListPageSize {
+		if len(response.Body.Objects) < limit {
 			break
 		}
 
-		offset += ipListPageSize
+		offset += limit
 	}
 
 	return result, nil
