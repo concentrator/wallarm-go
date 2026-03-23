@@ -11,10 +11,11 @@ type (
 	// Action contains operations available on Action resource
 	Action interface {
 		HintRead(hintBody *HintRead) (*HintReadResp, error)
-		RuleRead(ruleBody *ActionRead) (*ActionFetch, error)
+		ActionList(params *ActionListParams) (*ActionListResponse, error)
+		ActionReadByID(actionID int) (*ActionEntry, error)
+		ActionReadByHitID(hitID []string) (*ActionByHitResponse, error)
 		HintCreate(ruleBody *ActionCreate) (*ActionCreateResp, error)
 		HintUpdateV3(ruleID int, hintBody *HintUpdateV3Params) (*ActionCreateResp, error)
-		ActionDelete(actionID int) error
 		HintDelete(hintbody *HintDelete) error
 	}
 
@@ -131,37 +132,49 @@ type (
 		Period int `json:"period"`
 	}
 
-	// ActionFilter is the specific filter for getting the rules.
-	// This is an inner structure.
-	ActionFilter struct {
+	// ActionListFilter is the filter for listing actions.
+	ActionListFilter struct {
 		ID       []int    `json:"id,omitempty"`
 		NotID    []int    `json:"!id,omitempty"`
 		Clientid []int    `json:"clientid,omitempty"`
 		HintType []string `json:"hint_type,omitempty"`
+		Empty    *bool    `json:"empty,omitempty"`
 	}
 
 	// TwoDimensionalSlice is used for Point and HintsCount structures.
 	TwoDimensionalSlice [][]interface{}
 
-	// ActionRead is used as a filter to fetch the rules.
-	ActionRead struct {
-		Filter *ActionFilter `json:"filter"`
-		Limit  int           `json:"limit"`
-		Offset int           `json:"offset"`
+	// ActionListParams is the request body for listing actions.
+	ActionListParams struct {
+		Filter *ActionListFilter `json:"filter"`
+		Limit  int               `json:"limit"`
+		Offset int               `json:"offset"`
 	}
 
-	// ActionFetch is a response struct which portrays
-	// all conditions set for requests of filtered type.
-	ActionFetch struct {
+	// ActionEntry represents a single action from the API.
+	ActionEntry struct {
+		ID               int             `json:"id"`
+		Clientid         int             `json:"clientid"`
+		Name             *string         `json:"name"`
+		Conditions       []ActionDetails `json:"conditions"`
+		EndpointPath     *string         `json:"endpoint_path"`
+		EndpointDomain   *string         `json:"endpoint_domain"`
+		EndpointInstance *string         `json:"endpoint_instance"`
+		UpdatedAt        int             `json:"updated_at"`
+	}
+
+	// ActionListResponse is the response from listing actions.
+	ActionListResponse struct {
+		Status int           `json:"status"`
+		Body   []ActionEntry `json:"body"`
+	}
+
+	// ActionByHitResponse is the response from fetching action conditions by hit ID.
+	ActionByHitResponse struct {
 		Status int `json:"status"`
-		Body   []struct {
-			ID                int           `json:"id"`
-			Clientid          int           `json:"clientid"`
-			Name              interface{}   `json:"name"`
-			Conditions        []interface{} `json:"conditions"`
-			Hints             int           `json:"hints"`
-			GroupedHintsCount int           `json:"grouped_hints_count"`
-			UpdatedAt         int           `json:"updated_at"`
+		Body   struct {
+			Conditions []ActionDetails `json:"conditions"`
+			Clientid   int             `json:"clientid"`
 		} `json:"body"`
 	}
 
@@ -293,20 +306,57 @@ func (api *api) HintRead(hintBody *HintRead) (*HintReadResp, error) {
 	return &h, nil
 }
 
-// RuleRead reads the Rules defined by a filter.
-// API reference: https://apiconsole.eu1.wallarm.com
-func (api *api) RuleRead(ruleBody *ActionRead) (*ActionFetch, error) {
-
+// ActionList lists actions matching the given filter.
+// Endpoint: POST /v1/objects/action
+func (api *api) ActionList(params *ActionListParams) (*ActionListResponse, error) {
 	uri := "/v1/objects/action"
-	respBody, err := api.makeRequest(http.MethodPost, uri, "rule", ruleBody, nil)
+	respBody, err := api.makeRequest(http.MethodPost, uri, "action", params, nil)
 	if err != nil {
 		return nil, err
 	}
-	var a ActionFetch
+	var a ActionListResponse
 	if err = json.Unmarshal(respBody, &a); err != nil {
 		return nil, err
 	}
 	return &a, nil
+}
+
+// ActionReadByID fetches a single action by its ID.
+// Endpoint: GET /v3/action/{id}
+func (api *api) ActionReadByID(actionID int) (*ActionEntry, error) {
+	uri := fmt.Sprintf("/v3/action/%d", actionID)
+	respBody, err := api.makeRequest(http.MethodGet, uri, "action", nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Status int         `json:"status"`
+		Body   ActionEntry `json:"body"`
+	}
+	if err = json.Unmarshal(respBody, &resp); err != nil {
+		return nil, err
+	}
+	return &resp.Body, nil
+}
+
+// ActionReadByHitID fetches action conditions for a given hit.
+// The hit ID is an Elasticsearch tuple [index_name, document_id].
+// Returns conditions and client ID but no action ID (the action may not exist yet).
+// Endpoint: POST /v1/objects/action/by_hit
+func (api *api) ActionReadByHitID(hitID []string) (*ActionByHitResponse, error) {
+	uri := "/v1/objects/action/by_hit"
+	body := struct {
+		ID []string `json:"id"`
+	}{ID: hitID}
+	respBody, err := api.makeRequest(http.MethodPost, uri, "action", body, nil)
+	if err != nil {
+		return nil, err
+	}
+	var resp ActionByHitResponse
+	if err = json.Unmarshal(respBody, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 // HintCreate creates Rules in Wallarm Cloud.
@@ -323,18 +373,6 @@ func (api *api) HintCreate(ruleBody *ActionCreate) (*ActionCreateResp, error) {
 		return nil, err
 	}
 	return &a, nil
-}
-
-// ActionDelete deletes the Action defined by unique ID.
-// API reference: https://apiconsole.eu1.wallarm.com
-func (api *api) ActionDelete(actionID int) error {
-
-	uri := fmt.Sprintf("/v2/action/%d", actionID)
-	_, err := api.makeRequest(http.MethodDelete, uri, "rule", nil, nil)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 // HintDelete deletes the Rule defined by the unique Hint ID.
