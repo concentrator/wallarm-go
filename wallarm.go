@@ -3,6 +3,7 @@ package wallarm
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -17,6 +18,18 @@ import (
 
 	"github.com/pkg/errors"
 )
+
+// gzipReadCloser wraps a gzip.Reader and closes both the reader and the underlying body.
+type gzipReadCloser struct {
+	reader     *gzip.Reader
+	underlying io.ReadCloser
+}
+
+func (g *gzipReadCloser) Read(p []byte) (int, error) { return g.reader.Read(p) }
+func (g *gzipReadCloser) Close() error {
+	g.reader.Close()
+	return g.underlying.Close()
+}
 
 // ErrExistingResource is returned when resource was created other than Terrafom ways - directly via the API.
 var ErrExistingResource = errors.New("This resource has already been created earlier")
@@ -207,7 +220,12 @@ func (api *api) request(ctx context.Context, method, uri, reqType string, reqBod
 		return nil, errors.Wrap(err, "HTTP request creation failed")
 	}
 
-	req.Header = api.headers
+	for k, vs := range api.headers {
+		for _, v := range vs {
+			req.Header.Set(k, v)
+		}
+	}
+	req.Header.Set("Accept-Encoding", "gzip")
 	if api.UserAgent != "" {
 		req.Header.Set("User-Agent", api.UserAgent)
 	}
@@ -238,6 +256,18 @@ func (api *api) request(ctx context.Context, method, uri, reqType string, reqBod
 	resp, err := api.httpClient.Do(req)
 	if err != nil {
 		return nil, errors.Wrap(err, "HTTP request failed")
+	}
+
+	// Decompress gzip responses (we set Accept-Encoding: gzip explicitly).
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		reader, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			resp.Body.Close()
+			return nil, errors.Wrap(err, "gzip decompression failed")
+		}
+		resp.Body = &gzipReadCloser{reader: reader, underlying: resp.Body}
+		resp.Header.Del("Content-Encoding")
+		resp.ContentLength = -1
 	}
 
 	return resp, nil
