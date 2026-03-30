@@ -278,15 +278,16 @@ type (
 		Point           TwoDimensionalSlice `json:"point,omitempty"`
 	}
 
-	// HintDelete is used for removal of Rule by Hint ID.
+	// HintDelete is used for removal of Rules by Hint IDs.
+	// Supports batch delete — up to 1000 IDs per request.
 	HintDelete struct {
 		Filter *HintDeleteFilter `json:"filter"`
 	}
 
-	// HintDeleteFilter is used as a filter by Hint ID.
+	// HintDeleteFilter is used as a filter by Hint IDs.
 	HintDeleteFilter struct {
 		Clientid []int `json:"clientid"`
-		ID       int   `json:"id"`
+		ID       []int `json:"id"`
 	}
 )
 
