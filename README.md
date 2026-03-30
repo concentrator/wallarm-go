@@ -2,40 +2,47 @@
 
 [![build](https://github.com/wallarm/wallarm-go/workflows/Go/badge.svg)](https://github.com/wallarm/wallarm-go/actions?query=workflow%3AGo)
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/wallarm/wallarm-go)](https://pkg.go.dev/github.com/wallarm/wallarm-go)
-[![codecov](https://codecov.io/gh/wallarm/wallarm-go/branch/master/graph/badge.svg)](https://codecov.io/gh/wallarm/wallarm-go)
-[![Go Report Card](https://goreportcard.com/badge/github.com/wallarm/wallarm-go?style=flat-square)](https://goreportcard.com/report/github.com/wallarm/wallarm-go)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/wallarm/wallarm-go/blob/master/LICENSE)
 
-## Table of Contents
-- [Install](#install)
-- [Getting Started](#getting-started)
-- [License](#license)
+A Go client library for the [Wallarm API](https://docs.wallarm.com/api/overview/). Used by the [Terraform provider for Wallarm](https://github.com/wallarm/terraform-provider-wallarm).
 
-> **Note**: This library is in active development and highly suggested to use carefully.
+## Capabilities
 
-A Go library for interacting with
-[Wallarm API](https://apiconsole.eu1.wallarm.com). This library allows you to:
+* Rules — create, read, update, delete rules (hints) with paginated bulk fetch
+* IP lists — manage allowlist, denylist, and graylist entries (subnets, countries, datacenters, proxy types)
+* Integrations — email, Slack, Splunk, PagerDuty, OpsGenie, Datadog, and more
+* Triggers — threshold-based alerting and reaction rules
+* Applications — create and manage application pools
+* Nodes — filtering node lifecycle management
+* Tenants — multi-tenant account management
+* Users — user CRUD and role management
+* Actions — rule scope management (action conditions)
+* Hits — fetch detected hits for false positive analysis
+* API specs — API specification management
+* Credential stuffing — credential stuffing detection configs
+* Global mode — filtration mode (monitoring/blocking) management
 
-* Manage applications
-* Manage nodes
-* Manage integrations
-* Manage triggers
-* Manage users
-* Manage the denylist
-* Switch the WAF/Active Threat Verification modes
-* Inquire found vulnerabilities
+## Features
+
+* **Automatic retry** — transient errors are retried automatically:
+
+  | Status | Delay | Max retries |
+  |--------|-------|-------------|
+  | 423 (Rules locked) | 5s fixed | 12 |
+  | 5xx (Server error) | 10s fixed | 12 |
+  | 429 (Rate limit) | Exponential backoff | 12 |
+
+* **Gzip compression** — requests include `Accept-Encoding: gzip` for reduced response sizes
+* **Structured errors** — `APIError` type with `StatusCode` and `Body` fields, compatible with `errors.As()`
+* **Configurable** — custom HTTP client, base URL, retry policy, user agent, and headers via functional options
 
 ## Install
-
-You need a working Go environment
 
 ```sh
 go get github.com/wallarm/wallarm-go
 ```
 
 ## Getting Started
-
-The sample code could be similar
 
 ```go
 package main
@@ -49,108 +56,61 @@ import (
 )
 
 func main() {
-
-	wapiHost, exist := os.LookupEnv("WALLARM_API_HOST")
-	if !exist {
-		wapiHost = "https://api.wallarm.com"
+	host := os.Getenv("WALLARM_API_HOST")
+	if host == "" {
+		host = "https://api.wallarm.com"
 	}
-	wapiToken, exist := os.LookupEnv("WALLARM_API_TOKEN")
-	if !exist {
-		log.Fatal("ENV variable WALLARM_API_TOKEN is not present")
+	token := os.Getenv("WALLARM_API_TOKEN")
+	if token == "" {
+		log.Fatal("WALLARM_API_TOKEN is required")
 	}
 
-	authHeaders := make(http.Header)
-	authHeaders.Add("X-WallarmAPI-Token", wapiToken)
+	headers := http.Header{}
+	headers.Set("X-WallarmAPI-Token", token)
 
-	// Construct a new API object
-	api, err := wallarm.New(wallarm.UsingBaseURL(wapiHost), wallarm.Headers(authHeaders))
+	// Create client with token auth, retry policy, and custom base URL.
+	api, err := wallarm.New(
+		wallarm.UsingBaseURL(host),
+		wallarm.Headers(headers),
+		wallarm.UsingRetryPolicy(12, 1, 30),
+	)
 	if err != nil {
-		log.Print(err)
+		log.Fatal(err)
 	}
 
 	// Fetch user details
-	u, err := api.UserDetails()
+	user, err := api.UserDetails()
 	if err != nil {
-		log.Print(err)
+		log.Fatal(err)
 	}
-	// Print user specific data
-	log.Println(u.Body)
+	log.Printf("Authenticated as client %d", user.Body.ClientID)
 
-	// Change global Wallarm mode to monitoring
-	clientID := 1
-	modeParams := wallarm.WallarmMode{Mode: "monitoring"}
-
-	mode, err := api.WallarmModeUpdate(&modeParams, clientID)
+	// Read all rules for a client
+	resp, err := api.HintRead(&wallarm.HintRead{
+		Limit:   500,
+		OrderBy: "updated_at",
+		Filter:  &wallarm.HintFilter{Clientid: []int{user.Body.ClientID}},
+	})
 	if err != nil {
-		log.Print(err)
+		log.Fatal(err)
 	}
-	// Print Wallarm mode
-	log.Println(mode)
-
-	// Create a trigger when the number of attacks more than 1000 in 10 minutes
-	filter := wallarm.TriggerFilters{
-		ID:       "ip_address",
-		Operator: "eq",
-		Values:   []interface{}{"2.2.2.2"},
-	}
-
-	var filters []wallarm.TriggerFilters
-	filters = append(filters, filter)
-
-	action := wallarm.TriggerActions{
-		ID: "send_notification",
-		Params: wallarm.TriggerActionParams{
-			IntegrationIds: []int{5},
-		},
-	}
-
-	var actions []wallarm.TriggerActions
-	actions = append(actions, action)
-
-	triggerBody := wallarm.TriggerCreate{
-		Trigger: &wallarm.TriggerParam{
-			Name:       "New Terraform Trigger Telegram",
-			Comment:    "This is a description set by Terraform",
-			TemplateID: "attacks_exceeded",
-			Enabled:    true,
-			Filters:    &filters,
-			Actions:    &actions,
-		},
-	}
-
-	triggerResp, err := api.TriggerCreate(&triggerBody, 1)
-	if err != nil {
-		log.Print(err)
-	}
-	// Print trigger metadata
-	log.Println(triggerResp)
-
-	// Create an application with auto-generated ID
-	appCreate := wallarm.AppCreate{
-		Clientid: clientID,
-		Name:     "My First Application",
-	}
-
-	err = api.AppCreate(appCreate)
-	if err != nil {
-		log.Print(err)
-	}
-
-	// Create an application with specified ID
-	customID := 42
-	appCreateWithID := wallarm.AppCreate{
-		ID:       &customID,
-		Clientid: clientID,
-		Name:     "My Application with Custom ID",
-	}
-
-	err = api.AppCreate(appCreateWithID)
-	if err != nil {
-		log.Print(err)
-	}
+	log.Printf("Found %d rules", len(*resp.Body))
 }
 ```
 
-# License
+## Error Handling
 
-[MIT](LICENSE) licensed
+API errors are returned as `*wallarm.APIError` with status code and response body:
+
+```go
+import "errors"
+
+var apiErr *wallarm.APIError
+if errors.As(err, &apiErr) {
+	log.Printf("API error %d: %s", apiErr.StatusCode, apiErr.Body)
+}
+```
+
+## License
+
+[MIT](LICENSE)
