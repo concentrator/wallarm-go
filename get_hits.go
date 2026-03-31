@@ -29,7 +29,7 @@ type (
 		ClientID          int             `json:"clientid"`
 		RequestID         string          `json:"request_id,omitempty"`
 		ID                []string        `json:"id,omitempty"`
-		AttackID          []string        `json:"attackid,omitempty"`
+		AttackID          [][]string      `json:"attackid,omitempty"`
 		Type              []string        `json:"type,omitempty"`
 		State             *string         `json:"state"`
 		NotType           []string        `json:"!type,omitempty"`

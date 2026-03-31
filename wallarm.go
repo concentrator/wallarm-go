@@ -101,10 +101,6 @@ func (api *api) makeRequest(method, uri, reqType string, params interface{}, hea
 	return api.makeRequestContext(context.TODO(), method, uri, reqType, params, headers)
 }
 
-func (api *api) makeRequestWithHeaders(method, uri, reqType string, params interface{}, headers map[string]string) ([]byte, error) {
-	return api.makeRequestContext(context.TODO(), method, uri, reqType, params, headers)
-}
-
 func (api *api) makeRequestContext(ctx context.Context, method, uri, reqType string, params interface{}, headers map[string]string) ([]byte, error) {
 	// Replace nil with a JSON object if needed
 	var (
